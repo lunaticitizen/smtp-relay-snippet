@@ -3,7 +3,7 @@ import smtplib
 from email.message import EmailMessage
 
 parser = argparse.ArgumentParser(description="Send an email via SMTP relay")
-parser.add_argument("--to", required=True, help="Recipient address")
+parser.add_argument("--to", required=True, nargs="+", help="Recipient address(es)")
 parser.add_argument("--from", dest="sender", default="admin@mydc.uz", help="Sender address")
 parser.add_argument("--subject", default="Test Subject", help="Email subject")
 parser.add_argument("--content", default="Test Content", help="Email body")
@@ -11,7 +11,7 @@ args = parser.parse_args()
 
 msg = EmailMessage()
 msg["From"] = args.sender
-msg["To"] = args.to
+msg["To"] = ", ".join(args.to)
 msg["Subject"] = args.subject
 msg.set_content(args.content)
 
