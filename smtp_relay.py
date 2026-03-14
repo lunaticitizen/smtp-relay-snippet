@@ -20,6 +20,7 @@ examples:
   %(prog)s --to user@example.com -4
   %(prog)s --to user@example.com --server mail.example.com -6
   %(prog)s --to user@example.com --no-verify
+  %(prog)s --to user@example.com --no-tls
 """,
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
@@ -29,6 +30,7 @@ parser.add_argument("--subject", default="Test Subject", help="Email subject (de
 parser.add_argument("--content", default="Test Content", help="Email body (default: Test Content)")
 parser.add_argument("--server", default=None, help="SMTP server DNS name, IPv4, or IPv6 address (default: tas03smtp.mydc.uz)")
 parser.add_argument("--no-verify", dest="no_verify", action="store_true", help="Skip TLS certificate verification")
+parser.add_argument("--no-tls", dest="no_tls", action="store_true", help="Skip STARTTLS entirely (plain SMTP)")
 group = parser.add_mutually_exclusive_group()
 group.add_argument("-4", dest="ipv4", action="store_true", help="Force IPv4")
 group.add_argument("-6", dest="ipv6", action="store_true", help="Force IPv6")
@@ -40,7 +42,7 @@ msg["To"] = ", ".join(args.to)
 msg["Subject"] = args.subject
 msg.set_content(args.content)
 
-smtp_host = "tas03smtp.mydc.uz"
+smtp_host = args.server or "tas03smtp.mydc.uz"
 smtp_port = 25
 
 tls_context = None
@@ -49,31 +51,17 @@ if args.no_verify:
     tls_context.check_hostname = False
     tls_context.verify_mode = ssl.CERT_NONE
 
-if args.server:
-    smtp_host = args.server
-    try:
-        addr = ipaddress.ip_address(smtp_host)
-        smtp_host = f"[{addr}]" if isinstance(addr, ipaddress.IPv6Address) else str(addr)
-    except ValueError:
-        pass  # treat as DNS name
-    if args.ipv4 or args.ipv6:
-        family = socket.AF_INET if args.ipv4 else socket.AF_INET6
-        label = "IPv4" if args.ipv4 else "IPv6"
-        try:
-            addr_info = socket.getaddrinfo(args.server, smtp_port, family, socket.SOCK_STREAM)
-        except socket.gaierror:
-            print(f"Error: No {label} address found for {args.server}", file=sys.stderr)
-            sys.exit(1)
-        addr = addr_info[0][4]
-        with smtplib.SMTP() as smtp:
-            smtp.connect(addr[0], addr[1])
-            smtp.starttls(context=tls_context)
-            smtp.send_message(msg)
-    else:
-        with smtplib.SMTP(smtp_host, smtp_port) as smtp:
-            smtp.starttls(context=tls_context)
-            smtp.send_message(msg)
-elif args.ipv4 or args.ipv6:
+# Resolve connection target
+connect_host = smtp_host
+connect_port = smtp_port
+
+try:
+    addr = ipaddress.ip_address(smtp_host)
+    connect_host = f"[{addr}]" if isinstance(addr, ipaddress.IPv6Address) else str(addr)
+except ValueError:
+    pass  # treat as DNS name
+
+if args.ipv4 or args.ipv6:
     family = socket.AF_INET if args.ipv4 else socket.AF_INET6
     label = "IPv4" if args.ipv4 else "IPv6"
     try:
@@ -81,12 +69,14 @@ elif args.ipv4 or args.ipv6:
     except socket.gaierror:
         print(f"Error: No {label} address found for {smtp_host}", file=sys.stderr)
         sys.exit(1)
-    addr = addr_info[0][4]
-    with smtplib.SMTP() as smtp:
-        smtp.connect(addr[0], addr[1])
-        smtp.starttls(context=tls_context)
-        smtp.send_message(msg)
-else:
-    with smtplib.SMTP(smtp_host, smtp_port) as smtp:
-        smtp.starttls(context=tls_context)
-        smtp.send_message(msg)
+    connect_host, connect_port = addr_info[0][4][0], addr_info[0][4][1]
+
+# Connect and send
+with smtplib.SMTP() as smtp:
+    smtp.connect(connect_host, connect_port)
+    if not args.no_tls:
+        try:
+            smtp.starttls(context=tls_context)
+        except smtplib.SMTPException:
+            print("Warning: STARTTLS not supported by server, falling back to plain SMTP", file=sys.stderr)
+    smtp.send_message(msg)
