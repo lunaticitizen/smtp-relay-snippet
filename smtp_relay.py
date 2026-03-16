@@ -96,7 +96,7 @@ try:
                     print("Warning: STARTTLS not supported by server, falling back to plain SMTP", file=sys.stderr)
             smtp.send_message(msg)
 except ConnectionRefusedError:
-    proto = "SSL/TLS (port 465)" if args.use_ssl else f"port {connect_port}"
+    proto = f"SSL/TLS (port {connect_port})" if args.use_ssl else f"port {connect_port}"
     print(f"Error: Connection refused by {connect_host} on {proto}", file=sys.stderr)
     print("The server may not be listening on this port.", file=sys.stderr)
     sys.exit(1)
