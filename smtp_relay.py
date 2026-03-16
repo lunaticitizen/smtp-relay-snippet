@@ -23,6 +23,7 @@ examples:
   %(prog)s --to user@example.com --no-tls
   %(prog)s --to user@example.com --ssl
   %(prog)s --to user@example.com --ssl --no-verify
+  %(prog)s --to user@example.com --port 587
 """,
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
@@ -33,7 +34,8 @@ parser.add_argument("--content", default="Test Content", help="Email body (defau
 parser.add_argument("--server", default=None, help="SMTP server DNS name, IPv4, or IPv6 address (default: tas03smtp.mydc.uz)")
 parser.add_argument("--no-verify", dest="no_verify", action="store_true", help="Skip TLS certificate verification")
 parser.add_argument("--no-tls", dest="no_tls", action="store_true", help="Skip STARTTLS entirely (plain SMTP)")
-parser.add_argument("--ssl", dest="use_ssl", action="store_true", help="Use explicit TLS/SSL connection (port 465)")
+parser.add_argument("--ssl", dest="use_ssl", action="store_true", help="Use explicit TLS/SSL connection (default port 465)")
+parser.add_argument("--port", type=int, default=None, help="SMTP port (default: 25, or 465 with --ssl)")
 group = parser.add_mutually_exclusive_group()
 group.add_argument("-4", dest="ipv4", action="store_true", help="Force IPv4")
 group.add_argument("-6", dest="ipv6", action="store_true", help="Force IPv6")
@@ -50,7 +52,7 @@ msg["Subject"] = args.subject
 msg.set_content(args.content)
 
 smtp_host = args.server or "tas03smtp.mydc.uz"
-smtp_port = 465 if args.use_ssl else 25
+smtp_port = args.port or (465 if args.use_ssl else 25)
 
 tls_context = None
 if args.no_verify:
