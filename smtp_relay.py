@@ -21,6 +21,8 @@ examples:
   %(prog)s --to user@example.com --server mail.example.com -6
   %(prog)s --to user@example.com --no-verify
   %(prog)s --to user@example.com --no-tls
+  %(prog)s --to user@example.com --ssl
+  %(prog)s --to user@example.com --ssl --no-verify
 """,
     formatter_class=argparse.RawDescriptionHelpFormatter,
 )
@@ -31,10 +33,15 @@ parser.add_argument("--content", default="Test Content", help="Email body (defau
 parser.add_argument("--server", default=None, help="SMTP server DNS name, IPv4, or IPv6 address (default: tas03smtp.mydc.uz)")
 parser.add_argument("--no-verify", dest="no_verify", action="store_true", help="Skip TLS certificate verification")
 parser.add_argument("--no-tls", dest="no_tls", action="store_true", help="Skip STARTTLS entirely (plain SMTP)")
+parser.add_argument("--ssl", dest="use_ssl", action="store_true", help="Use explicit TLS/SSL connection (port 465)")
 group = parser.add_mutually_exclusive_group()
 group.add_argument("-4", dest="ipv4", action="store_true", help="Force IPv4")
 group.add_argument("-6", dest="ipv6", action="store_true", help="Force IPv6")
 args = parser.parse_args()
+
+if args.use_ssl and args.no_tls:
+    print("Error: --ssl and --no-tls are mutually exclusive", file=sys.stderr)
+    sys.exit(1)
 
 msg = EmailMessage()
 msg["From"] = args.sender
@@ -43,7 +50,7 @@ msg["Subject"] = args.subject
 msg.set_content(args.content)
 
 smtp_host = args.server or "tas03smtp.mydc.uz"
-smtp_port = 25
+smtp_port = 465 if args.use_ssl else 25
 
 tls_context = None
 if args.no_verify:
@@ -72,11 +79,18 @@ if args.ipv4 or args.ipv6:
     connect_host, connect_port = addr_info[0][4][0], addr_info[0][4][1]
 
 # Connect and send
-with smtplib.SMTP() as smtp:
-    smtp.connect(connect_host, connect_port)
-    if not args.no_tls:
-        try:
-            smtp.starttls(context=tls_context)
-        except smtplib.SMTPException:
-            print("Warning: STARTTLS not supported by server, falling back to plain SMTP", file=sys.stderr)
-    smtp.send_message(msg)
+if args.use_ssl:
+    ssl_context = tls_context or ssl.create_default_context()
+    with smtplib.SMTP_SSL(connect_host, connect_port, context=ssl_context) as smtp:
+        smtp.send_message(msg)
+else:
+    with smtplib.SMTP() as smtp:
+        smtp.connect(connect_host, connect_port)
+        if not args.no_tls:
+            try:
+                smtp.starttls(context=tls_context)
+            except smtplib.SMTPException:
+                print("Warning: STARTTLS not supported by server, falling back to plain SMTP", file=sys.stderr)
+        smtp.send_message(msg)
+
+print(f"Email sent successfully to {', '.join(args.to)}")
