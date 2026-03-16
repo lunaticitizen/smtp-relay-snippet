@@ -79,18 +79,32 @@ if args.ipv4 or args.ipv6:
     connect_host, connect_port = addr_info[0][4][0], addr_info[0][4][1]
 
 # Connect and send
-if args.use_ssl:
-    ssl_context = tls_context or ssl.create_default_context()
-    with smtplib.SMTP_SSL(connect_host, connect_port, context=ssl_context) as smtp:
-        smtp.send_message(msg)
-else:
-    with smtplib.SMTP() as smtp:
-        smtp.connect(connect_host, connect_port)
-        if not args.no_tls:
-            try:
-                smtp.starttls(context=tls_context)
-            except smtplib.SMTPException:
-                print("Warning: STARTTLS not supported by server, falling back to plain SMTP", file=sys.stderr)
-        smtp.send_message(msg)
+try:
+    if args.use_ssl:
+        ssl_context = tls_context or ssl.create_default_context()
+        with smtplib.SMTP_SSL(connect_host, connect_port, context=ssl_context) as smtp:
+            smtp.send_message(msg)
+    else:
+        with smtplib.SMTP() as smtp:
+            smtp.connect(connect_host, connect_port)
+            if not args.no_tls:
+                try:
+                    smtp.starttls(context=tls_context)
+                except smtplib.SMTPException:
+                    print("Warning: STARTTLS not supported by server, falling back to plain SMTP", file=sys.stderr)
+            smtp.send_message(msg)
+except ConnectionRefusedError:
+    proto = "SSL/TLS (port 465)" if args.use_ssl else f"port {connect_port}"
+    print(f"Error: Connection refused by {connect_host} on {proto}", file=sys.stderr)
+    print("The server may not be listening on this port.", file=sys.stderr)
+    sys.exit(1)
+except OSError as e:
+    if e.errno == 101 or e.errno == 113:  # Network unreachable / No route to host
+        label = "IPv6" if args.ipv6 else "IPv4"
+        print(f"Error: Cannot reach {connect_host} via {label}", file=sys.stderr)
+        print(f"The server may not be listening on {label}.", file=sys.stderr)
+    else:
+        print(f"Error: {e}", file=sys.stderr)
+    sys.exit(1)
 
 print(f"Email sent successfully to {', '.join(args.to)}")
