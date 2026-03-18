@@ -87,8 +87,7 @@ try:
         with smtplib.SMTP_SSL(connect_host, connect_port, context=ssl_context) as smtp:
             smtp.send_message(msg)
     else:
-        with smtplib.SMTP() as smtp:
-            smtp.connect(connect_host, connect_port)
+        with smtplib.SMTP(connect_host, connect_port) as smtp:
             if not args.no_tls:
                 try:
                     smtp.starttls(context=tls_context)
@@ -99,6 +98,10 @@ except ConnectionRefusedError:
     proto = f"SSL/TLS (port {connect_port})" if args.use_ssl else f"port {connect_port}"
     print(f"Error: Connection refused by {connect_host} on {proto}", file=sys.stderr)
     print("The server may not be listening on this port.", file=sys.stderr)
+    sys.exit(1)
+except ssl.SSLError as e:
+    print(f"Error: TLS/SSL handshake failed with {connect_host} on port {connect_port}", file=sys.stderr)
+    print("The server may not support TLS/SSL on this port.", file=sys.stderr)
     sys.exit(1)
 except OSError as e:
     if e.errno == 101 or e.errno == 113:  # Network unreachable / No route to host
